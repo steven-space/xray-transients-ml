@@ -3,9 +3,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-import os
 import glob
 import ipywidgets as widgets
+from matplotlib.colors import LogNorm
+import pickle
 # ASTROPHY Imports
 import astropy 
 from astropy.table import Table
@@ -26,14 +27,14 @@ def list_folders_fun(path):
     folder_list = [f.name for f in Path(path).iterdir() if f.is_dir()]
     return folder_list
     
-def regionfilter_fun(eventdatapath):
+def region_filter_fun(global_path,set_id):
     """
     DESCRIPTION: Filters eventfiles in a directory with regionfiles and stores filtered files in the same directory.
     INPUT: Directory path
     OUTPUT: Filtered eventfiles
     """
     # Loop over eventdata
-    for event_filename in glob.iglob(f'{eventdatapath}/acisf*regevt3.fits.gz'):
+    for event_filename in glob.iglob(f'{global_path}/{set_id}/eventdata/acisf*regevt3.fits.gz'):
         # Get ObsID
         obsid = int(event_filename.split('_')[0][-5:])
         # Get RegionID
@@ -42,7 +43,7 @@ def regionfilter_fun(eventdatapath):
         except: 
             regionid = int(event_filename.split('_')[3][-4:]) 
         # Filter eventfiles with regionfiles and store filtered file
-        region_filename = [region for region in glob.iglob(f'{eventdatapath}/acisf*reg3.fits.gz') if str(obsid) in region and str(regionid) in region][0]
+        region_filename = [region for region in glob.iglob(f'{global_path}/{set_id}/eventdata/acisf*reg3.fits.gz') if str(obsid) in region and str(regionid) in region][0]
         filtered_filename = event_filename.replace(".fits", "_filtered.fits")
         try:
             ciao_contrib.runtool.dmcopy(f'{event_filename}[sky=region({region_filename})]', filtered_filename)
@@ -95,26 +96,87 @@ def create_eventfilestable_fun(global_path,set_id):
     return df_eventfiles
     
     
-def data_reduction_fun(df_eventfiles,df_properties):
+def data_reduction_fun(df_eventfiles,df_properties,global_path,set_id):
     """
     DESCRIPTION: Reduces evenfiles table and properties table to required columns and adds unique ID, can now be used for data representation function
-    INPUT: 1. Original eventfile table, 2. Original properties table
+    INPUT: 1. Original eventfile table, 2. Original properties table, 3. Global Path, 4. Set Name
     OUTPUT: 1. Reduced eventfile table, 2. Reduced properties table
     """
     # Extract important labels and input columns
-    df_properties_input = df_properties[['obsid','region_id','cnts_aper_b','cnts_aperbkg_b','src_cnts_aper_b','flux_aper_b','hard_hm','hard_hs','hard_ms','var_prob_b','var_prob_h','var_prob_m','var_prob_s']]
     df_eventfiles_input = df_eventfiles[['obsid','region_id','time','energy','chipx','chipy']]
+    df_properties_input = df_properties[['obsid','region_id','cnts_aper_b','cnts_aperbkg_b','src_cnts_aper_b','flux_aper_b','hard_hm','hard_hs','hard_ms','var_prob_b','var_prob_h','var_prob_m','var_prob_s']]
     # Create unique IDs
+    df_eventfiles_input['obsreg_id'] = df_eventfiles_input['obsid'].astype(str) + '_' + df_eventfiles_input['region_id'].astype(str)
     df_properties_input['obsreg_id'] = df_properties_input['obsid'].astype(str) + '_' + df_properties_input['region_id'].astype(str)
-    df_eventfiles_input['obsreg_id'] = df_eventfiles['obsid'].astype(str) + '_' + df_eventfiles['region_id'].astype(str)
-    # Group data (combined ID)
-    df_properties_input = df_properties_input.drop(columns=['obsid', 'region_id'])
+    # Drop individual IDs
     df_eventfiles_input = df_eventfiles_input.drop(columns=['obsid', 'region_id'])
     df_properties_input = df_properties_input.drop(columns=['obsid', 'region_id'])
-    df_eventfiles_input = df_eventfiles_input.drop(columns=['obsid', 'region_id'])
+    # Filter to same size
+    df_eventfiles_input = df_eventfiles_input[df_eventfiles_input['obsreg_id'].isin(df_properties_input['obsreg_id'].unique())]
+    # df_properties_input = df_properties_input[df_properties_input['obsreg_id'].isin(df_eventfiles_input['obsreg_id'].unique())]
+    # Save new dataframes
+    df_eventfiles_input.to_csv(f'{global_path}/{set_id}/eventfiles-input-{set_id}.csv',index=False)
+    df_properties_input.to_csv(f'{global_path}/{set_id}/properties-input-{set_id}.csv',index=False)
     return df_eventfiles_input, df_properties_input
 
-def data_representation_fun(df_eventfiles_input,df_properties_input):
+
+
+
+
+
+def data_representation2D_fun(df_eventfiles_input,df_properties_input,global_path,set_id,nbins_E,nbins_dt,colormap='Viridis',showplot=True):
+    # Group dataframes by IDs
     df_eventfiles_group = df_eventfiles_input.groupby('obsreg_id')
     df_properties_group = df_properties_input.groupby('obsreg_id')
-    return  print("Number of Eventfiles: ", df_eventfiles_group.ngroups), print("Number of Property Sets: ", df_properties_group.ngroups)
+    # Initialise features, labels and ids lists
+    x_features = []
+    y_labels = []
+    id_pass = []
+    id_fail = []
+    # Initialise counters
+    count = 0
+    fails = 0
+    count_limit = df_eventfiles_group.ngroups
+    # Loop over all eventfiles
+    for id_name, dfi in df_eventfiles_group:
+        # Add delta_time column
+        dfi["delta_time"] = dfi['time'].diff()
+        # Remove first row as delta_time = nan
+        dfi = dfi[dfi["delta_time"].notna()]
+        # Add a constant value "pseudo-count" 0.1 to delta_time = 0 
+        dfi["delta_time"] = dfi["delta_time"].apply(lambda dt: np.where(dt == 0, dt + 0.1, dt))
+        try:
+            # Eventfile length and duration for normalisation
+            N = len(dfi) 
+            T = max(dfi["time"])-min(dfi["time"])
+            # Add dt column (with normalisations applied)
+            dfi["dt"] = np.log10(N * dfi["delta_time"]/T)
+            dt_min = min(dfi["dt"])
+            dt_max = max(dfi["dt"])
+            dfi["dt"] = (dfi["dt"]- dt_min)/(dt_max-dt_min)
+            # Add E column
+            dfi["E"] = np.log10(dfi["energy"])
+            # Create histogram representation
+            fig, ax = plt.subplots(figsize=(3,3))
+            #hist = plt.hist2d(df["dt"],df["E"],range = [[dt_axis_min, dt_axis_max],[np.log10(500.), np.log10(7000.)]],bins=(nbins_dt,nbins_E),norm=LogNorm(),cmap = 'plasma', density = True) 
+            hist2D = ax.hist2d(dfi["dt"],dfi["E"],range = [[0, 1],[np.log10(500.), np.log10(7000.)]],bins=(nbins_dt,nbins_E),norm=LogNorm(),cmap = colormap)
+            if showplot:
+                print(id_name)
+                plt.show()
+            # Create features 
+            x = hist2D[0]/np.max(hist2D[0])
+            # Create labels
+            y = df_properties_group.get_group(id_name)[['cnts_aper_b','cnts_aperbkg_b','src_cnts_aper_b','flux_aper_b','hard_hm','hard_hs','hard_ms','var_prob_b','var_prob_h','var_prob_m',	'var_prob_s']].to_numpy()
+            # Append features, labels and ids lists
+            x_features.append(x)
+            y_labels.append(y)
+            id_pass.append(id_name)
+            count = count + 1
+            print(f'Counter: {count} / {count_limit}')
+        except:     
+            id_fail.append(id_name)
+            fails = fails + 1
+            print(f'Fails: {fails}')
+    # Concatenate labels into a matrix for easier use
+    y_labels = np.concatenate(y_labels)
+    return  x_features, y_labels, id_pass, id_fail
