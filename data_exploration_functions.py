@@ -99,7 +99,7 @@ def create_eventfilestable_fun(global_path,set_id):
     return df_eventfiles
     
 # 4. Data Reduction Function
-def data_reduction_fun(df_eventfiles,df_properties,global_path,set_id):
+def data_reduction_fun(df_eventfiles,df_properties,global_path,set_id, unique_ids = True, min_counts = 0):
     """
     DESCRIPTION: Reduces evenfiles table and properties table to required columns and adds unique ID, can now be used for data representation function
     INPUT: 1. Original eventfile table, 2. Original properties table, 3. Global Path, 4. Set Name
@@ -114,9 +114,14 @@ def data_reduction_fun(df_eventfiles,df_properties,global_path,set_id):
     # Drop individual IDs
     df_eventfiles_input = df_eventfiles_input.drop(columns=['obsid', 'region_id'])
     df_properties_input = df_properties_input.drop(columns=['obsid', 'region_id'])
-    # Filter to same size
-    df_eventfiles_input = df_eventfiles_input[df_eventfiles_input['obsreg_id'].isin(df_properties_input['obsreg_id'].unique())]
-    df_properties_input = df_properties_input[df_properties_input['obsreg_id'].isin(df_eventfiles_input['obsreg_id'].unique())]
+    # Filter observations where there are less than min_counts counts
+    counts = df_eventfiles_input['obsreg_id'].value_counts()
+    count_mask = df_eventfiles_input['obsreg_id'].isin(counts[counts >= min_counts].index)
+    df_eventfiles_input = df_eventfiles_input[count_mask]
+    # Unique ID combinations filter
+    if unique_ids:
+        df_eventfiles_input = df_eventfiles_input[df_eventfiles_input['obsreg_id'].isin(df_properties_input['obsreg_id'].unique())]
+        df_properties_input = df_properties_input[df_properties_input['obsreg_id'].isin(df_eventfiles_input['obsreg_id'].unique())]
     # Save new dataframes
     df_eventfiles_input.to_csv(f'{global_path}/{set_id}/eventfiles-input-{set_id}.csv',index=False)
     df_properties_input.to_csv(f'{global_path}/{set_id}/properties-input-{set_id}.csv',index=False)

@@ -27,9 +27,11 @@ def hist2D_representation_bonafide_fun(df_eventfile_input, id_name, nbins_E, nbi
     obsid = id_name.split("_")[0]
     regid = id_name.split("_")[1]
     # Eventfile length and duration for normalisation
+    N_length = len(df) 
+    T_duration = max(df["time"])-min(df["time"])
     if normalise:
-        N = len(df) 
-        T = max(df["time"])-min(df["time"])
+        N = N_length
+        T = T_duration
     else:
         N = 1
         T = 1
@@ -73,7 +75,7 @@ def hist2D_representation_bonafide_fun(df_eventfile_input, id_name, nbins_E, nbi
 
     # Plot histograms
     fig,axs=plt.subplots(1,3,figsize=(12,2),constrained_layout = True)
-    fig.suptitle(f'{dt_type} and normalised: {normalise}')
+    fig.suptitle(f'{dt_type} and normalised: {normalise} (N: {N_length} counts, T: {T_duration}s')
     plt.subplot(1, 3, 1)
     plt.title(f'E vs t for ID: {id_name}')
     Et = plt.hist2d(df["t"],df["E"],range = [[0,1],[Emin, Emax]],bins=(nbins_t,nbins_E),norm=LogNorm(),cmap = 'plasma') 
