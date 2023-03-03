@@ -16,9 +16,91 @@ from astropy.io import fits
 import ciao_contrib.runtool
 from ciao_contrib.runtool import *
 
+# Data Representation 
+
+def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,normalise = True):
+    # Copy df
+    df = df_eventfile_input.copy()
+    # Define histogram boundaries
+    E_start = np.log10(500)
+    E_end = np.log10(7000)
+    t_start = 0
+    t_end = 1
+    # IDs
+    obsid = id_name.split("_")[0]
+    regid = id_name.split("_")[1]
+    # Eventfile length and duration
+    N_length = len(df) 
+    T_duration = max(df["time"])-min(df["time"])
+    # Add E, t column
+    df["E"] = np.log10(df["energy"])
+    df["t"] = (df["time"]-min(df["time"]))/(max(df["time"])-min(df["time"]))
+    # Add Et histogram
+    hist_Et = plt.hist2d(df["t"],df["E"],range = [[t_start,t_end],[E_start, E_start]],bins=(nbins_t,nbins_E),norm=LogNorm(),cmap = 'inferno') 
+    if normalise == True:
+        feature = hist_Et[0]/np.max(hist_Et[0])
+    else:
+        feature = hist_Et[0]
+    return feature
+
+
+
+
+
+# Actual Data Representation Function
+
+def hist2D_representation_bonafide_fun2(df_eventfile_input, id_name, nbins_E, nbins_dt, nbins_t, dt_type='x3',pre_normalise = True, dt_normalise = True):
+    Emin = np.log(500)
+    Emax = np.log(7000)
+    # Copy df
+    df = df_eventfile_input.copy()
+    # IDs
+    obsid = id_name.split("_")[0]
+    regid = id_name.split("_")[1]
+    # Eventfile length and duration for normalisation
+    N_length = len(df) 
+    T_duration = max(df["time"])-min(df["time"])
+    # Add E, t column
+    df["E"] = np.log(df["energy"])
+    df["t"] = (df["time"]-min(df["time"]))/(max(df["time"])-min(df["time"]))
+     # Add delta_time column
+    df["delta_time"] = df['time'].diff().shift(-1)
+    # normalise from -1 to 1
+    if pre_normalise:
+        df["delta_time"] = 2*(df["delta_time"]-min(df["delta_time"]))/(max(df["delta_time"])-min(df["delta_time"])) - 1
+    # Add dt column
+    if dt_type == 'x3':
+        df["dt"] = ((df["delta_time"])) **3
+    if dt_type == 'x5':
+        df["dt"] = ((df["delta_time"])) **3
+    if dt_type == 'x7':
+        df["dt"] = ((df["delta_time"])) **3
+    if dt_type == 'x9':
+        df["dt"] = ((df["delta_time"])) **3
+    #print(df["dt"])
+    if dt_normalise:
+        dt_min = min(df["dt"])
+        dt_max = max(df["dt"])
+        df["dt"] = 2*(df["dt"]- dt_min)/(dt_max-dt_min)-1
+
+    # Plot histograms
+    fig,axs=plt.subplots(1,3,figsize=(12,2),constrained_layout = True)
+    fig.suptitle(f'{dt_type}, (N: {N_length} counts, T: {T_duration}s)')
+    plt.subplot(1, 3, 1)
+    plt.title(f'E vs t for ID: {id_name}')
+    Et = plt.hist2d(df["t"],df["E"],range = [[0,1],[Emin, Emax]],bins=(nbins_t,nbins_E),norm=LogNorm(),cmap = 'plasma') 
+    plt.subplot(1, 3, 2)
+    plt.title(f'E vs dt for ID: {id_name}')
+    Edt = plt.hist2d(df["dt"],df["E"],range = [[-1,1],[Emin, Emax]],bins=(nbins_dt,nbins_E),norm=LogNorm(),cmap = 'plasma') 
+    plt.subplot(1, 3, 3)
+    plt.title(f'dt vs t for ID: {id_name}')
+    dtt = plt.hist2d(df["t"],df["dt"],range = [[0,1],[-1,1]],bins=(nbins_t,nbins_dt),norm=LogNorm(),cmap = 'plasma') 
+    plt.show()
+    return
+
 # Define Custom Functions
 
-def hist2D_representation_bonafide_fun(df_eventfile_input, id_name, nbins_E, nbins_dt, nbins_t, dt_type='lin',normalise = True):
+def hist2D_representation_bonafide_fun(df_eventfile_input, id_name, nbins_E, nbins_dt, nbins_t, dt_type='lin',pre_normalise = True, normalise = True, log_time = False):
     Emin = np.log(500)
     Emax = np.log(7000)
     # Copy df
@@ -38,22 +120,31 @@ def hist2D_representation_bonafide_fun(df_eventfile_input, id_name, nbins_E, nbi
     # Add E column
     df["E"] = np.log(df["energy"])
     # Add t column
-    df["t"] = (df["time"]-min(df["time"]))/(max(df["time"])-min(df["time"]))
+    if log_time:
+        df["t"] = np.log(df["time"])
+    else: 
+        df["t"] = df["time"]
+    df["t"] = (df["t"]-min(df["t"]))/(max(df["t"])-min(df["t"]))
     # Add delta_time column
-    df["delta_time"] = df['time'].diff()
-     # Add dt column
+    df["delta_time"] = df['time'].diff().shift(-1)
     df = df[df["delta_time"].notna()]
-    df["delta_time"] = df["delta_time"].apply(lambda dt: np.where(dt == 0, dt + 0.01, dt))
-
+    if pre_normalise:
+        df["delta_time"] = (df["delta_time"]-min(df["delta_time"]))/(max(df["delta_time"])-min(df["delta_time"]))+0.1
+        #print(df["delta_time"])
+    df["delta_time"] = df["delta_time"].apply(lambda dtx : np.where(dtx == 0, dtx + 0.1, dtx))
+    print(df["delta_time"])
+     # Add dt column
     if dt_type == 'lin':
         df["dt"] = (N/T * (df["delta_time"]))
     elif dt_type == 'log':
         df["dt"] = np.log(N/T * df["delta_time"])
+    elif dt_type == 'log2':
+        df["dt"] = np.log2(N/T * df["delta_time"])
     elif dt_type == 'log*100':
         df["dt"] = np.log(N/T * 100*df["delta_time"])
-    elif dt_type == 'log+1':
-        df["dt"] = np.log(N/T * df["delta_time"]+1)
     elif dt_type == 'exp':
+        df["dt"] = np.exp(N/T * df["delta_time"])
+    elif dt_type == '2^x':
         df["dt"] = np.exp(N/T * df["delta_time"])
     elif dt_type == '1.1^x':
         df["dt"] = 1.1 ** (N/T * df["delta_time"])
@@ -67,15 +158,21 @@ def hist2D_representation_bonafide_fun(df_eventfile_input, id_name, nbins_E, nbi
         df["dt"] = (N/T * df["delta_time"]) **1.1
     elif dt_type == 'x^-1.1':
         df["dt"] = (N/T * df["delta_time"]) **(-1.1)
+    elif dt_type == 'x^1.5':
+        df["dt"] = (N/T * df["delta_time"]) **1.5
+    elif dt_type == 'x^-1.5':
+        df["dt"] = (N/T * df["delta_time"]) **(-1.5)
+    elif dt_type == 'sqrt':
+        df["dt"] = np.sqrt((N/T * df["delta_time"]))
 
-
+    #print(df["dt"])
     dt_min = min(df["dt"])
     dt_max = max(df["dt"])
     df["dt"] = (df["dt"]- dt_min)/(dt_max-dt_min)
 
     # Plot histograms
     fig,axs=plt.subplots(1,3,figsize=(12,2),constrained_layout = True)
-    fig.suptitle(f'{dt_type} and normalised: {normalise} (N: {N_length} counts, T: {T_duration}s')
+    fig.suptitle(f'{dt_type}, normalised: {normalise}, pre_normalised: {pre_normalise}  (N: {N_length} counts, T: {T_duration}s)')
     plt.subplot(1, 3, 1)
     plt.title(f'E vs t for ID: {id_name}')
     Et = plt.hist2d(df["t"],df["E"],range = [[0,1],[Emin, Emax]],bins=(nbins_t,nbins_E),norm=LogNorm(),cmap = 'plasma') 

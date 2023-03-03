@@ -13,8 +13,8 @@ import astropy
 from astropy.table import Table
 from astropy.io import fits
 # CIAO Imports
-import ciao_contrib.runtool
-from ciao_contrib.runtool import *
+# import ciao_contrib.runtool
+# from ciao_contrib.runtool import *
 
 # Define Custom Functions
 
@@ -129,7 +129,7 @@ def data_reduction_fun(df_eventfiles,df_properties,global_path,set_id, unique_id
 
 
 # 5. Edt binning plotter
-def Edt_binning_plotter(nbin_E_list,nbin_dt_list,binning_rule = 'BINNING RULE NAME',show_percentiles = True, xlim_E=[0,100],xlim_dt=[0,100]):
+def Edt_binning_plotter(nbin_E_list,nbin_dt_list,binning_rule = 'BINNING RULE NAME',show_percentiles = True, xlim_E=[0,100],xlim_dt=[0,100],nbins_E = 100 ,nbins_dt = 1000):
     # Define Colour Scheme
     google_blue = '#4285F4'
     google_red = '#DB4437'
