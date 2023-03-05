@@ -18,9 +18,11 @@ from ciao_contrib.runtool import *
 
 # Data Representation 
 
-def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,normalise = True):
+def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,minmax_norm = True, plot = True):
     # Copy df
     df = df_eventfile_input.copy()
+    df.sort_values(by='time', inplace = True) 
+    df.reset_index(drop=True, inplace = True)
     # Define histogram boundaries
     E_start = np.log10(500)
     E_end = np.log10(7000)
@@ -36,12 +38,20 @@ def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,normalise = True):
     df["E"] = np.log10(df["energy"])
     df["t"] = (df["time"]-min(df["time"]))/(max(df["time"])-min(df["time"]))
     # Add Et histogram
-    hist_Et = plt.hist2d(df["t"],df["E"],range = [[t_start,t_end],[E_start, E_start]],bins=(nbins_t,nbins_E),norm=LogNorm(),cmap = 'inferno') 
-    if normalise == True:
+    hist_Et = np.histogram2d(df["t"],df["E"],range = [[t_start,t_end],[E_start, E_end]],bins=(nbins_t,nbins_E)) 
+    if minmax_norm == True:
         feature = hist_Et[0]/np.max(hist_Et[0])
     else:
         feature = hist_Et[0]
+    if plot == True:
+        plt.imshow(feature.T, origin='lower', extent=[0, 1, E_start, E_end], cmap='plasma',norm=LogNorm())
+        plt.colorbar()
+        plt.xlabel('Time')
+        plt.ylabel('Log10(Energy)')
+        plt.show()
     return feature
+
+
 
 
 

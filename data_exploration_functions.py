@@ -12,6 +12,7 @@ import pickle
 import astropy 
 from astropy.table import Table
 from astropy.io import fits
+import astropy.stats.bayesian_blocks as bb
 # CIAO Imports
 # import ciao_contrib.runtool
 # from ciao_contrib.runtool import *
@@ -122,6 +123,8 @@ def data_reduction_fun(df_eventfiles,df_properties,global_path,set_id, unique_id
     if unique_ids:
         df_eventfiles_input = df_eventfiles_input[df_eventfiles_input['obsreg_id'].isin(df_properties_input['obsreg_id'].unique())]
         df_properties_input = df_properties_input[df_properties_input['obsreg_id'].isin(df_eventfiles_input['obsreg_id'].unique())]
+    df_eventfiles_input = df_eventfiles_input.sort_values(by='obsreg_id')
+    df_properties_input = df_properties_input.sort_values(by='obsreg_id')
     # Save new dataframes
     df_eventfiles_input.to_csv(f'{global_path}/{set_id}/eventfiles-input-{set_id}.csv',index=False)
     df_properties_input.to_csv(f'{global_path}/{set_id}/properties-input-{set_id}.csv',index=False)
@@ -302,7 +305,7 @@ def lc_plotter_fun(df_eventfiles_input,id_name,bin_size_sec):
     plt.rcParams['font.sans-serif'] = 'Helvetica'
     plt.rcParams['font.family'] = 'sans-serif'
     # Create subplots 
-    fig, axs = plt.subplots(2, 2, figsize=(12, 6),constrained_layout = True)
+    fig, axs = plt.subplots(3, 2, figsize=(12, 6),constrained_layout = True)
     fig.suptitle(f'ObsRegID: {id_name}',fontweight="bold")
     # Create binned lightcurve
     df = df_eventfiles_input.copy()
@@ -325,6 +328,8 @@ def lc_plotter_fun(df_eventfiles_input,id_name,bin_size_sec):
     axs[1,0].set_title('Running Average of 3 Bins')
     # Create cumulative count plot
     df_cumulative = df.copy()
+    df_cumulative = df_cumulative.sort_values(by='time') 
+    df_cumulative = df_cumulative.reset_index(drop=True) 
     df_cumulative['count'] = 1
     df_cumulative['cumulative_count'] = df_cumulative['count'].cumsum()
     # Plot cumulative count plot
@@ -342,14 +347,8 @@ def lc_plotter_fun(df_eventfiles_input,id_name,bin_size_sec):
     df_cumulative['gradient'] = np.gradient(df_cumulative['cumulative_count'], df_cumulative['time'])
     df_cumulative['gradient_norm'] = np.gradient(df_cumulative['cumulative_count_norm'], df_cumulative['time_norm'])
     df_cumu_bin = df_cumulative.copy()
-     # Show the plot
-    plt.show()
-    # df_cumu_bin = df_cumulative.groupby(df_cumulative['time_norm'] // 1000 * 1000).mean()
-    # axs[1,1].scatter(df_cumu_bin.index/1000, df_cumu_bin['gradient_norm'], color = google_yellow)
+
     axs[1,1].scatter(df_cumulative.index/1000, df_cumulative['gradient_norm'], color = google_yellow)
-    # axs[1,1].plot(df_cumulative['time_norm'], df_cumulative['gradient'])
-    # axs[1,1].set_xlabel('Time')
-    # axs[1,1].set_ylabel('Gradient')
 
     # Plot normalized cumulative count plot
     # parx = axs[0,1].twiny()
@@ -358,4 +357,6 @@ def lc_plotter_fun(df_eventfiles_input,id_name,bin_size_sec):
     # axs[0,1].set_ylim(min_count, max_count)
     # parx.set_xlim(0, 1)
     # pary.set_ylim(0, 1)
+    # Show the plot
+    plt.show()
     return
