@@ -18,7 +18,7 @@ from ciao_contrib.runtool import *
 
 # Data Representation 
 
-def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,minmax_norm = True, plot = True):
+def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,norm = 'none', plot = True, colmap = 'plasma'):
     # Copy df
     df = df_eventfile_input.copy()
     df.sort_values(by='time', inplace = True) 
@@ -39,15 +39,93 @@ def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,minmax_norm = True, 
     df["t"] = (df["time"]-min(df["time"]))/(max(df["time"])-min(df["time"]))
     # Add Et histogram
     hist_Et = np.histogram2d(df["t"],df["E"],range = [[t_start,t_end],[E_start, E_end]],bins=(nbins_t,nbins_E)) 
-    if minmax_norm == True:
-        feature = hist_Et[0]/np.max(hist_Et[0])
-    else:
+    if norm == 'minmax':
+        feature = (hist_Et[0]-np.min(hist_Et[0]))/(np.max(hist_Et[0])-np.min(hist_Et[0]))
+    elif norm == 'none':
         feature = hist_Et[0]
     if plot == True:
-        plt.imshow(feature.T, origin='lower', extent=[0, 1, E_start, E_end], cmap='plasma',norm=LogNorm())
-        plt.colorbar()
-        plt.xlabel('Time')
-        plt.ylabel('Log10(Energy)')
+        plt.imshow(feature.T, origin='lower', extent=[0, 1, E_start, E_end], cmap=colmap,norm=LogNorm())
+        #plt.colorbar()
+        plt.xlabel(r'$\tau$')
+        plt.ylabel(r'$\epsilon$')
+        plt.title(f'ObsID: {obsid}, RegID: {regid}, N: {N_length}, T: {int(T_duration)}s')
+        plt.show()
+    return feature
+
+def hist3D(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, plot = True, colmap = 'plasma'):
+    # Copy df
+    df = df_eventfile_input.copy()
+    df.sort_values(by='time', inplace = True) 
+    df.reset_index(drop=True, inplace = True)
+    # Define histogram boundaries
+    E_start = np.log10(500)
+    E_end = np.log10(7000)
+    t_start = 0
+    t_end = 1
+    dt_start = 0
+    dt_end = 1
+    # IDs
+    obsid = id_name.split("_")[0]
+    regid = id_name.split("_")[1]
+    # Eventfile length and duration
+    N_length = len(df) 
+    T_duration = max(df["time"])-min(df["time"])
+    # Add E, t, dt columns
+    df["E"] = np.log10(df["energy"])
+    df["t"] = (df["time"]-min(df["time"]))/(max(df["time"])-min(df["time"]))
+    # df["delta_time"] = df['time'].diff().shift(-1)
+    # df = df[df["delta_time"].notna()]
+    # df["dt"] = (df['delta_time'] - df['delta_time'].mean()) / df['delta_time'].std() 
+    # df["dt"] = (df["dt"]-min(df["dt"]))/(max(df["dt"])-min(df["dt"]))
+    df["delta_time"] = df['t'].diff().shift(-1)
+    df = df[df["delta_time"].notna()]
+    df["dt"] = (df['delta_time']-min(df['delta_time']))/(max(df['delta_time'])-min(df['delta_time']))
+    # Add Et histogram
+    hist3D, edges = np.histogramdd((df["t"], df["E"], df["dt"]), range = [[t_start,t_end],[E_start, E_end], [dt_start, dt_end]],bins=(nbins_t,nbins_E, nbins_dt))
+    # Create feature
+    feature = hist3D
+    # Plot
+    if plot == True:
+        fig = plt.figure(figsize=(10, 10),constrained_layout = True)
+        fig.suptitle(f'ObsID: {obsid}, RegID: {regid}, N: {N_length}, T: {int(T_duration)}s')
+        # Plot the E-t projection
+        ax1 = fig.add_subplot(2, 2, 1)
+        ax1.imshow(hist3D.sum(axis=2).T, origin='lower', extent=[t_start,t_end, E_start, E_end],cmap=colmap,norm=LogNorm())
+        ax1.set_xlabel(r'$\tau$')
+        ax1.set_ylabel(r'$\epsilon$')
+        ax1.set_title(r'$\epsilon$ vs $\tau$ Projection')
+
+        # Plot the dt-t projection
+        ax2 = fig.add_subplot(2, 2, 2)
+        ax2.imshow(hist3D.sum(axis=1).T, origin='lower', extent=[t_start,t_end, dt_start, dt_end],cmap=colmap,norm=LogNorm())
+        ax2.set_xlabel(r'$\tau$')
+        ax2.set_ylabel(r'$\delta\tau$')
+        ax2.set_title(r'$\delta\tau$ vs $\tau$ Projection')
+
+        # Plot the YZ projection
+        ax3 = fig.add_subplot(2, 2, 3)
+        ax3.imshow(hist3D.sum(axis=0), origin='lower', extent=[dt_start,dt_end, E_start, E_end],cmap=colmap,norm=LogNorm())
+        ax3.set_xlabel(r'$\delta\tau$')
+        ax3.set_ylabel(r'$\epsilon$')
+        ax3.set_title(r'$\epsilon$ vs $\delta\tau$ Projection')
+
+        # Plot 3D Histogram
+        ax4 = fig.add_subplot(2, 2, 4, projection='3d')
+        tt, EE, dtdt = np.meshgrid(edges[0][:-1], edges[1][:-1], edges[2][:-1], indexing='ij')
+        tt = np.ravel(tt)
+        EE = np.ravel(EE)
+        dtdt = np.ravel(dtdt)
+        h = np.ravel(hist3D)
+        ax4.scatter(dtdt, tt, EE, s=50, alpha=0.5, edgecolors='none', c=h, cmap=colmap)
+        ax4.set_xlabel(r'$\delta\tau$')
+        ax4.set_ylabel(r'$\tau$')
+        ax4.set_zlabel(r'$\epsilon$')
+        ax4.set_title('3D Histogram')
+        ax4.view_init(elev=30, azim=45)
+        ax4.xaxis.set_ticks_position('bottom')
+        ax4.yaxis.set_ticks_position('top')
+        ax4.zaxis.set_ticks_position('bottom')
+        ax4.invert_xaxis()
         plt.show()
     return feature
 
@@ -55,6 +133,81 @@ def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,minmax_norm = True, 
 
 
 
+
+
+###################### DRAFTS
+
+def hist3D_2(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, dtscale = 'mm', plot = True):
+    # Copy df
+    df = df_eventfile_input.copy()
+    df.sort_values(by='time', inplace = True) 
+    df.reset_index(drop=True, inplace = True)
+    # Define histogram boundaries
+    E_start = np.log10(500)
+    E_end = np.log10(7000)
+    t_start = 0
+    t_end = 1
+    dt_start = 0
+    dt_end = 1
+    # IDs
+    obsid = id_name.split("_")[0]
+    regid = id_name.split("_")[1]
+    # Eventfile length and duration
+    N_length = len(df) 
+    T_duration = max(df["time"])-min(df["time"])
+    # Add E, t, dt columns
+    df["E"] = np.log10(df["energy"])
+    df["t"] = (df["time"]-min(df["time"]))/(max(df["time"])-min(df["time"]))
+    df["delta_time"] = df['t'].diff().shift(-1)
+    df = df[df["delta_time"].notna()]
+    if dtscale == 'z':
+        df["dt"] = (df['delta_time'] - df['delta_time'].mean()) / df['delta_time'].std() 
+        df["dt"] = (df['dt']-min(df['dt']))/(max(df['dt'])-min(df['dt']))
+    elif dtscale == 'mm':
+        df["dt"] = (df['delta_time']-min(df['delta_time']))/(max(df['delta_time'])-min(df['delta_time']))
+    # Add Et histogram
+    hist3D, edges = np.histogramdd((df["t"], df["E"], df["dt"]), range = [[t_start,t_end],[E_start, E_end], [dt_start, dt_end]],bins=(nbins_t,nbins_E, nbins_dt))
+    # Create feature
+    feature = hist3D
+    # Plot
+    if plot == True:
+        fig = plt.figure(figsize=(10, 10),constrained_layout = True)
+        fig.suptitle(f'ObsID: {obsid}, RegID: {regid}, N: {N_length}, T: {T_duration}')
+        # Plot the E-t projection
+        ax1 = fig.add_subplot(2, 2, 1)
+        ax1.imshow(hist3D.sum(axis=2).T, origin='lower', extent=[t_start,t_end, E_start, E_end],cmap='plasma',norm=LogNorm())
+        ax1.set_xlabel('t')
+        ax1.set_ylabel('E')
+        ax1.set_title('E-t Projection')
+
+        # Plot the dt-t projection
+        ax2 = fig.add_subplot(2, 2, 2)
+        ax2.imshow(hist3D.sum(axis=1).T, origin='lower', extent=[t_start,t_end, dt_start, dt_end],cmap='plasma',norm=LogNorm())
+        ax2.set_xlabel('t')
+        ax2.set_ylabel('dt')
+        ax2.set_title('dt-t Projection')
+
+        # Plot the YZ projection
+        ax3 = fig.add_subplot(2, 2, 3)
+        ax3.imshow(hist3D.sum(axis=0), origin='lower', extent=[dt_start,dt_end, E_start, E_end],cmap='plasma',norm=LogNorm())
+        ax3.set_xlabel('dt')
+        ax3.set_ylabel('E')
+        ax3.set_title('E-dt Projection')
+
+        # Plot 3D Histogram
+        ax4 = fig.add_subplot(2, 2, 4, projection='3d')
+        x, y, z = np.meshgrid(edges[0][:-1], edges[2][:-1], edges[1][:-1], indexing='ij')
+        x = np.ravel(x)
+        y = np.ravel(y)
+        z = np.ravel(z)
+        h = np.ravel(hist3D)
+        ax4.scatter(x, y, z, s=h*50, alpha=0.5, edgecolors='none', c=h, cmap='plasma')
+        ax4.set_xlabel('t')
+        ax4.set_ylabel('dt')
+        ax4.set_zlabel('E')
+        ax4.set_title('3D Histogram')
+        plt.show()
+    return feature
 
 
 # Actual Data Representation Function
