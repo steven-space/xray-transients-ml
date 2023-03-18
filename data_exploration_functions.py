@@ -238,6 +238,8 @@ def lc_plotter_fun(df_eventfiles_input,id_name,bin_size_sec):
     df_rolling = df_binned.rolling(window=3, center=True).mean()
     rolling_std = df_binned.rolling(window=3, center=True).std()
     errors = rolling_std['time']/math.sqrt(3)
+    errors.iloc[0] = errors.iloc[0] * math.sqrt(3)/math.sqrt(2)
+    errors.iloc[-1] = errors.iloc[-1] * math.sqrt(3)/math.sqrt(2)
     # Plot rolling 3-bin averaged lightcurved
     axs[1,0].plot(df_rolling.index/1000, df_rolling, color = google_red)
     axs[1,0].errorbar(df_rolling.index/1000, df_rolling['time'], yerr = errors, xerr = None,fmt ='.',color = "black",linewidth = .5,capsize = 1)
@@ -326,6 +328,8 @@ def lc_plotter_fun_2(df_eventfiles_input,id_name,bin_size_sec):
     df_rolling = df_binned.rolling(window=3, center=True).mean()
     rolling_std = df_binned.rolling(window=3, center=True).std()
     errors = rolling_std['time']/math.sqrt(3)
+    errors.iloc[0] = errors.iloc[0] * math.sqrt(3)/math.sqrt(2)
+    errors.iloc[-1] = errors.iloc[-1] * math.sqrt(3)/math.sqrt(2)
     # Plot rolling 3-bin averaged lightcurved
     axs[1].plot(df_rolling.index/1000, df_rolling, color = google_red)
     axs[1].errorbar(df_rolling.index/1000, df_rolling['time'], yerr = errors, xerr = None,fmt ='.',color = "black",linewidth = .5,capsize = 1)

@@ -39,6 +39,7 @@ def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,norm = 'none', plot 
     df["t"] = (df["time"]-min(df["time"]))/(max(df["time"])-min(df["time"]))
     # Add Et histogram
     hist_Et = np.histogram2d(df["t"],df["E"],range = [[t_start,t_end],[E_start, E_end]],bins=(nbins_t,nbins_E)) 
+    # Create feature
     if norm == 'minmax':
         feature = (hist_Et[0]-np.min(hist_Et[0]))/(np.max(hist_Et[0])-np.min(hist_Et[0]))
     elif norm == 'none':
@@ -52,7 +53,7 @@ def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,norm = 'none', plot 
         plt.show()
     return feature
 
-def hist3D(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, plot = True, colmap = 'plasma'):
+def hist3D(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, norm = 'none', plot = True, colmap = 'plasma'):
     # Copy df
     df = df_eventfile_input.copy()
     df.sort_values(by='time', inplace = True) 
@@ -80,10 +81,13 @@ def hist3D(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, plot = True,
     df["delta_time"] = df['t'].diff().shift(-1)
     df = df[df["delta_time"].notna()]
     df["dt"] = (df['delta_time']-min(df['delta_time']))/(max(df['delta_time'])-min(df['delta_time']))
-    # Add Et histogram
+    # Add Etdt histogram
     hist3D, edges = np.histogramdd((df["t"], df["E"], df["dt"]), range = [[t_start,t_end],[E_start, E_end], [dt_start, dt_end]],bins=(nbins_t,nbins_E, nbins_dt))
     # Create feature
-    feature = hist3D
+    if norm == 'minmax':
+        feature = (hist3D-np.min(hist3D))/(np.max(hist3D)-np.min(hist3D))
+    elif norm == 'none':
+        feature = hist3D
     # Plot
     if plot == True:
         fig = plt.figure(figsize=(10, 10),constrained_layout = True)
@@ -116,7 +120,7 @@ def hist3D(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, plot = True,
         EE = np.ravel(EE)
         dtdt = np.ravel(dtdt)
         h = np.ravel(hist3D)
-        ax4.scatter(dtdt, tt, EE, s=50, alpha=0.5, edgecolors='none', c=h, cmap=colmap)
+        ax4.scatter(dtdt, tt, EE, s=50, alpha=0.5, edgecolors='none', c=h, cmap=colmap, norm = LogNorm())
         ax4.set_xlabel(r'$\delta\tau$')
         ax4.set_ylabel(r'$\tau$')
         ax4.set_zlabel(r'$\epsilon$')
@@ -129,8 +133,60 @@ def hist3D(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, plot = True,
         plt.show()
     return feature
 
+# Image producer
 
+def hist2D_img(df_eventfile_input, id_name, savefolder, norm = 'none', plot = True, colmap = 'plasma'):
+    # Copy df
+    df = df_eventfile_input.copy()
+    df.sort_values(by='time', inplace = True) 
+    df.reset_index(drop=True, inplace = True)
+    # Define histogram boundaries
+    E_start = np.log10(500)
+    E_end = np.log10(7000)
+    t_start = 0
+    t_end = 1
+    # IDs
+    obsid = id_name.split("_")[0]
+    regid = id_name.split("_")[1]
+    # Eventfile length and duration
+    N_length = len(df) 
+    T_duration = max(df["time"])-min(df["time"])
+    # Add E, t column
+    df["E"] = np.log10(df["energy"])
+    df["t"] = (df["time"]-min(df["time"]))/(max(df["time"])-min(df["time"]))
+    # Freedman-Diaconis rule t
+    iqr_E = np.subtract(*np.percentile(df["E"], [75, 25], axis=0)) #IQ range
+    binwidth_E = 2 * iqr_E / (len(df["E"]) ** (1/3))
+    nbins_E = int(np.ceil((max(df["E"]) - min(df["E"])) / binwidth_E))
+    iqr_t = np.subtract(*np.percentile(df["t"], [75, 25], axis=0)) #IQ range
+    binwidth_t = 2 * iqr_t / (len(df["t"]) ** (1/3))
+    nbins_t = int(np.ceil((max(df["t"]) - min(df["t"])) / binwidth_t))
+    # Add Et histogram
+    hist_Et = np.histogram2d(df["t"],df["E"],range = [[t_start,t_end],[E_start, E_end]],bins=(nbins_t,nbins_E)) 
+    # Create feature
+    if norm == 'minmax':
+        feature = (hist_Et[0]-np.min(hist_Et[0]))/(np.max(hist_Et[0])-np.min(hist_Et[0]))
+    elif norm == 'none':
+        feature = hist_Et[0]
 
+    if plot == True:
+        plt.imshow(feature.T, origin='lower', extent=[t_start,t_end, E_start, E_end], cmap=colmap,norm=LogNorm())
+        #plt.colorbar()
+        plt.xlabel(r'$\tau$')
+        plt.ylabel(r'$\epsilon$')
+        plt.title(f'ObsID: {obsid}, RegID: {regid}, N: {N_length}, T: {int(T_duration)}s')
+        plt.show()
+
+    # Save the figure
+    fig, ax = plt.subplots(figsize=(10, 10))
+    im = ax.imshow(feature.T, origin='lower', extent=[t_start,t_end, E_start, E_end], cmap='viridis', norm=LogNorm())
+    # Remove x-axis and y-axis ticks and labels
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    fig.savefig(f'{savefolder}/{id_name}.png',bbox_inches='tight', dpi=300,pad_inches=0)
+    return feature
 
 
 
