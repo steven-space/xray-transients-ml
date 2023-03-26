@@ -14,11 +14,114 @@ import astropy
 from astropy.table import Table
 from astropy.io import fits
 import astropy.stats.bayesian_blocks as bb
+import astropy.stats as astats
 # CIAO Imports
 # import ciao_contrib.runtool
 # from ciao_contrib.runtool import *
 
 # Define Custom Functions
+
+# 6. Lightcurve Plotter Function
+def lightcurveplotter(df_eventfiles_input,id_name,bin_size_sec, bb_p0 = 0.01):
+    """
+    DESCRIPTION: Plots lightcurves and cumulative counts for given eventfile input dataframe
+    INPUT: 1. Original eventfile table, 2. Original properties table, 3. Global Path, 4. Set Name
+    OUTPUT: 1. Reduced eventfile table, 2. Reduced properties table
+    """
+    # Define Colour Scheme
+    google_blue = '#4285F4'
+    google_red = '#DB4437'
+    google_yellow = '#F4B400'
+    google_green = '#0F9D58'
+    google_purple = '#6f2da8'
+    # Define Font Settings
+    plt.rcParams.update({'font.size': 9})
+    plt.rcParams['font.sans-serif'] = 'Helvetica'
+    plt.rcParams['font.family'] = 'sans-serif'
+    # Create subplots 
+    fig, axs = plt.subplots(6, 1, figsize=(6, 12),constrained_layout = True)
+    fig.suptitle(f'ObsRegID: {id_name}',fontweight="bold")
+    # Prepare df
+    df = df_eventfiles_input.copy()
+    df['time'] = df_eventfiles_input['time'] - min(df_eventfiles_input['time'])
+    df = df.sort_values(by='time') 
+    df = df.reset_index(drop=True)
+    # Create binned lightcurve
+    df_binned = df.groupby(df['time'] // bin_size_sec * bin_size_sec).agg(
+        broad_count = ('energy', lambda x: ((x >= 500) & (x <= 7000)).sum()),
+        soft_count =('energy', lambda x: ((x >= 500) & (x < 1200)).sum()),
+        medium_count=('energy', lambda x: ((x >= 1200) & (x < 2000)).sum()),
+        hard_count=('energy', lambda x: ((x >= 2000) & (x <= 7000)).sum()))
+    # Plot binned lightcurve
+    axs[0].plot(df_binned.index/1000, df_binned['broad_count'], color = google_blue, marker = 'o', markerfacecolor = 'black', markersize = 4)
+    axs[0].set_xlabel('Time [ks]')
+    axs[0].set_ylabel('Counts per Bin')
+    axs[0].set_title(f'Lightcurve with {bin_size_sec}s Bin Size')
+    # Create rolling 3-bin averaged lightcurved
+    df_rolling = df_binned.rolling(window=3, center=True).mean()
+    rolling_std = df_binned.rolling(window=3, center=True).std()
+    errors = rolling_std['broad_count']/math.sqrt(3)
+    errors.iloc[0] = errors.iloc[0] * math.sqrt(3)/math.sqrt(2)
+    errors.iloc[-1] = errors.iloc[-1] * math.sqrt(3)/math.sqrt(2)
+    # Plot rolling 3-bin averaged lightcurved
+    axs[1].plot(df_rolling.index/1000, df_rolling['broad_count'], color = google_red)
+    axs[1].errorbar(df_rolling.index/1000, df_rolling['broad_count'], yerr = errors, xerr = None,fmt ='.',color = "black",linewidth = .5,capsize = 1)
+    axs[1].set_xlabel('Time [ks]')
+    axs[1].set_ylabel('Counts per Bin')
+    axs[1].set_title('Running Average of 3 Bins')
+    # Create cumulative count plot
+    df_cumulative = df.copy()
+    df_cumulative['count'] = 1
+    df_cumulative['cumulative_count'] = df_cumulative['count'].cumsum()
+    # Plot cumulative count plot
+    axs[2].plot(df_cumulative['time']/1000, df_cumulative['cumulative_count'],color = google_green)
+    axs[2].set_xlabel('Time [ks]')
+    axs[2].set_ylabel('Cumulative Count')
+    axs[2].set_title('Cumulative Count over Time')
+    # Create a BB plot
+    bb_bins = astats.bayesian_blocks(df['time'].values/1000, fitness='events',p0 = bb_p0) # p0 = 0.01 or so BASED ON VINAY ! 6?
+    bin_widths = bb_bins[1:] - bb_bins[:-1]
+    counts, bins, _ =  axs[3].hist(df['time']/1000, bins=bb_bins, color=google_yellow, histtype='step')
+    countrate = counts/bin_widths 
+    bin_centers = (bb_bins[:-1] + bb_bins[1:]) / 2
+    axs[3].set_xlabel('Time [ks]')
+    axs[3].set_ylabel('Counts per Bin')
+    axs[3].set_title(f'Bayesian Blocks Lightcurve (p0 = {bb_p0})')
+    # Create BB countrate plot
+    axs[4].step(bb_bins, np.append(countrate, countrate[-1]), where='post', color='black')
+    axs[4].set_xlim(axs[3].get_xlim())
+    axs[4].set_xlabel('Time [ks]')
+    axs[4].set_ylabel('Count Rate')
+    axs[4].set_title(f'Bayesian Blocks Count Rate (p0 = {bb_p0})')
+    # Create a HR plot
+    df_hr = df_binned.copy()
+    df_hr['hr_hm'] = (df_hr['hard_count']-df_hr['medium_count'])/(df_hr['hard_count']+df_hr['medium_count'])
+    df_hr['hr_hs'] = (df_hr['hard_count']-df_hr['soft_count'])/(df_hr['hard_count']+df_hr['soft_count'])
+    df_hr['hr_ms'] = (df_hr['medium_count']-df_hr['soft_count'])/(df_hr['medium_count']+df_hr['soft_count'])
+    df_hr['hr_hm_log'] = np.log10(df_hr['hard_count']/df_hr['medium_count'])
+    df_hr['hr_hs_log'] = np.log10(df_hr['hard_count']/df_hr['soft_count'])
+    df_hr['hr_ms_log'] = np.log10(df_hr['medium_count']/df_hr['soft_count'])
+
+    axs[5].plot(df_hr.index/1000, df_hr['hr_hm'], color = google_purple, label = 'H-M', linestyle='-.')
+    axs[5].plot(df_hr.index/1000, df_hr['hr_hs'], color = google_purple, label = 'H-S', linestyle='-')
+    axs[5].plot(df_hr.index/1000, df_hr['hr_ms'], color = google_purple, label = 'M-S', linestyle=':')
+    axs[5].set_xlabel('Time [ks]')
+    axs[5].set_ylabel('HR')
+    axs[5].set_title(f'HR Plot with {bin_size_sec}s Bin Size')
+    axs[5].legend(loc='upper left')
+
+    # axs[5].plot(df_hr.index/1000, df_hr['hr_hs'], color = google_yellow)
+    # axs[5].set_xlabel('Time [ks]')
+    # axs[5].set_ylabel('HR_{hs}')
+    # axs[5].set_title(f'HR Plot with {bin_size_sec}s Bin Size')
+
+    # axs[6].plot(df_hr.index/1000, df_hr['hr_ms'], color = google_yellow)
+    # axs[6].set_xlabel('Time [ks]')
+    # axs[6].set_ylabel('HR_{ms}')
+    # axs[6].set_title(f'HR Plot with {bin_size_sec}s Bin Size')
+    plt.show()
+    return
+
 
 # Edt binning plotter
 def binning_plotter(bin_list,show_percentiles = True, xlim =[0,100],nbins = 100, farbe = 'schwarz',title = 'XXX'):
@@ -41,23 +144,26 @@ def binning_plotter(bin_list,show_percentiles = True, xlim =[0,100],nbins = 100,
     elif farbe == 'schwarz':
         colour = 'black'
     # Define Font Settings
-    plt.rcParams.update({'font.size': 9})
-    plt.rcParams['font.sans-serif'] = 'Helvetica'
-    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams.update({'font.size': 10})
+    plt.rcParams['font.monospace'] = "Courier"
+    plt.rcParams["font.family"] = "monospace"
     # Create subplots 
-    fig, axs = plt.subplots(1, 2, figsize=(12, 3))
+    fig, axs = plt.subplots(1, 1, figsize=(6, 3))
     # Plot Binning without percentiles
-    axs[0].hist(bin_list, color = colour,bins=nbins)
-    axs[0].set_xlabel('Optimal Number of Bins')
-    axs[0].set_ylabel('Counts')
-    axs[0].set_title(title)
-    axs[0].set_xlim(xlim)
-    # Plot delta_time Binning histograms
-    axs[1].hist(bin_list, color = colour,bins=nbins)
-    axs[1].set_xlabel('Optimal Number of Bins')
-    axs[1].set_ylabel('Counts')
-    axs[1].set_title(title)
-    axs[1].set_xlim(xlim)
+    axs.hist(bin_list, color = colour,bins=nbins)
+    axs.set_xlabel('Optimal Number of Bins')
+    axs.set_ylabel('Counts')
+    axs.set_title(title)
+    axs.set_xlim(xlim)
+    # axs.yaxis.grid()
+    axs.minorticks_on()
+    axs.tick_params(which='both', direction='in', top=True, right=True)
+    # # Plot delta_time Binning histograms
+    # axs[1].hist(bin_list, color = colour,bins=nbins)
+    # axs[1].set_xlabel('Optimal Number of Bins')
+    # axs[1].set_ylabel('Counts')
+    # axs[1].set_title(title)
+    # axs[1].set_xlim(xlim)
     # Plot Percentiles
     if show_percentiles:
         # Energy statistical values
@@ -68,20 +174,67 @@ def binning_plotter(bin_list,show_percentiles = True, xlim =[0,100],nbins = 100,
         n_75 = int(np.percentile(bin_list, 75))
         n_50 =  int(np.percentile(bin_list, 50))
         # Plot
-        textsize = 8
-        axs[1].axvline(n_avg,color='black',linestyle='-')
-        plt.text(n_avg+0.3, .85, f'Mean\n{n_avg}', transform=axs[1].get_xaxis_transform(),fontsize=textsize)
+        textsize = 10
+        # axs[0].axvline(n_avg,color='black',linestyle='-')
+        # plt.text(n_avg+0.3, .85, f'Mean\n{n_avg}', transform=axs[1].get_xaxis_transform(),fontsize=textsize)
         # axs[1].axvline(n_99,color='black',linestyle='--')
         # plt.text(n_99+0.3, .4, f'99%\n{n_99}', transform=axs[1].get_xaxis_transform(),fontsize=textsize)
-        axs[1].axvline(n_95,color='black',linestyle=':')
-        plt.text(n_95+0.3, .40, f'95%\n{n_95}', transform=axs[1].get_xaxis_transform(),fontsize=textsize)
-        axs[1].axvline(n_90,color='black',linestyle='-.')
-        plt.text(n_90+0.3, .55, f'90%\n{n_90}', transform=axs[1].get_xaxis_transform(),fontsize=textsize)
-        axs[1].axvline(n_75,color='black',linestyle='--')
-        plt.text(n_75+0.3, .7, f'75%\n{n_75}', transform=axs[1].get_xaxis_transform(),fontsize=textsize)
+        # axs[0].axvline(n_95,color='black',linestyle=':')
+        # plt.text(n_95+0.3, .40, f'95%\n{n_95}', transform=axs[1].get_xaxis_transform(),fontsize=textsize)
+        axs.axvline(n_90,color='black',linestyle=':')
+        plt.text(n_90+0.3, .75, f'90%\n{n_90}', transform=axs.get_xaxis_transform(),fontsize=textsize)
+        # axs[0].axvline(n_75,color='black',linestyle='--')
+        # plt.text(n_75+0.3, .7, f'75%\n{n_75}', transform=axs[1].get_xaxis_transform(),fontsize=textsize)
         # axs[1].axvline(n_75,color='black',linestyle=':')
         # plt.text(n_75+0.3, .7, f'75%\n{n_75}', transform=axs[1].get_xaxis_transform(),fontsize=textsize)
     
+    return
+
+# t binning plotter
+def NT_binning_plotter(list,show_percentiles = False,xlim = [0,800],farbe = 'schwarz', T_or_N = 'T'):
+    # Define Colour Scheme
+    google_blue = '#4285F4'
+    google_red = '#DB4437'
+    google_yellow = '#F4B400'
+    google_green = '#0F9D58'
+    google_purple = '#6f2da8'
+    
+    if farbe == 'blau':
+        colour = google_blue
+    elif farbe == 'rot':
+        colour = google_red
+    elif farbe == 'gelb':
+        colour = google_yellow
+    elif farbe == 'gruen':
+        colour = google_green
+    elif farbe == 'lila':
+        colour = google_purple
+    elif farbe == 'schwarz':
+        colour = 'black'
+
+    # Define Font Settings
+    plt.rcParams.update({'font.size': 10})
+    plt.rcParams['font.monospace'] = "Courier"
+    plt.rcParams["font.family"] = "monospace"
+    # Freedman-Diaconis rule N
+    iqr = np.subtract(*np.percentile(list, [75, 25], axis=0)) #IQ range
+    binwidth = 2 * iqr / (len(list) ** (1/3))
+    nbins = int(np.ceil((max(list) - min(list)) / binwidth))
+    
+    # Create subplots 
+    fig, axs = plt.subplots(1, 1, figsize=(6, 3))
+    # Plot Energy Binning histograms
+    axs.hist(list, color = colour ,bins = nbins)
+    if T_or_N == 'N':
+        axs.set_xlabel(r'Eventfile Length $N$')
+        axs.set_title(r'Eventfile Length Distribution')
+    else:
+        axs.set_xlabel(r'Eventfile Duration $T$')
+        axs.set_title(r'Eventfile Duration Distribution')
+    axs.set_xlim(xlim)
+    axs.set_ylabel('Counts')
+    axs.minorticks_on()
+    axs.tick_params(which='both', direction='in', top=True, right=True)
     return
 
 # t binning plotter
@@ -118,10 +271,9 @@ def t_binning_plotter(N_list,T_list,show_percentiles = False,xlim_N = [0,800],xl
     elif farbe2 == 'schwarz':
         colour2 = 'black'
     # Define Font Settings
-    plt.rcParams.update({'font.size': 9})
-    plt.rcParams['font.sans-serif'] = 'Helvetica'
-    plt.rcParams['font.family'] = 'sans-serif'
-
+    plt.rcParams.update({'font.size': 10})
+    plt.rcParams['font.monospace'] = "Courier"
+    plt.rcParams["font.family"] = "monospace"
     # Freedman-Diaconis rule N
     iqr_N = np.subtract(*np.percentile(N_list, [75, 25], axis=0)) #IQ range
     binwidth_N = 2 * iqr_N / (len(N_list) ** (1/3))
@@ -350,6 +502,8 @@ def lc_plotter_fun_2(df_eventfiles_input,id_name,bin_size_sec):
     return
 
 
+
+
 # CSC Products Plot
 def cscproducts_plots_fun(df_eventfiles_input,id_name):
     try:
@@ -395,3 +549,4 @@ def cscproducts_plots_fun(df_eventfiles_input,id_name):
         
     except: 
         print(f'Failed: {id_name}')
+

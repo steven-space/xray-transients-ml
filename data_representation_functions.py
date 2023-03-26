@@ -18,7 +18,7 @@ from ciao_contrib.runtool import *
 
 # Data Representation 
 
-def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,norm = 'none', plot = True, colmap = 'plasma'):
+def hist2D(df_eventfile_input, id_name, nbins_E, nbins_t, norm = 'minmax', plot = True, colmap = 'plasma', lognorm = True):
     # Copy df
     df = df_eventfile_input.copy()
     df.sort_values(by='time', inplace = True) 
@@ -45,7 +45,10 @@ def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,norm = 'none', plot 
     elif norm == 'none':
         feature = hist_Et[0]
     if plot == True:
-        plt.imshow(feature.T, origin='lower', extent=[0, 1, E_start, E_end], cmap=colmap,norm=LogNorm())
+        if lognorm == True:
+            plt.imshow(feature.T, origin='lower', extent=[0, 1, E_start, E_end], cmap=colmap,norm=LogNorm())
+        elif lognorm == False:
+            plt.imshow(feature.T, origin='lower', extent=[0, 1, E_start, E_end], cmap=colmap)
         #plt.colorbar()
         plt.xlabel(r'$\tau$')
         plt.ylabel(r'$\epsilon$')
@@ -53,7 +56,7 @@ def hist2D_Et(df_eventfile_input, id_name, nbins_E, nbins_t,norm = 'none', plot 
         plt.show()
     return feature
 
-def hist3D(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, norm = 'none', plot = True, colmap = 'plasma'):
+def hist3D(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, norm = 'minmax', plot = True, colmap = 'plasma', lognorm = True):
     # Copy df
     df = df_eventfile_input.copy()
     df.sort_values(by='time', inplace = True) 
@@ -94,21 +97,30 @@ def hist3D(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, norm = 'none
         fig.suptitle(f'ObsID: {obsid}, RegID: {regid}, N: {N_length}, T: {int(T_duration)}s')
         # Plot the E-t projection
         ax1 = fig.add_subplot(2, 2, 1)
-        ax1.imshow(hist3D.sum(axis=2).T, origin='lower', extent=[t_start,t_end, E_start, E_end],cmap=colmap,norm=LogNorm())
+        if lognorm == True:
+            ax1.imshow(hist3D.sum(axis=2).T, origin='lower', extent=[t_start,t_end, E_start, E_end],cmap=colmap,norm=LogNorm())
+        elif lognorm == False:
+            ax1.imshow(hist3D.sum(axis=2).T, origin='lower', extent=[t_start,t_end, E_start, E_end],cmap=colmap)
         ax1.set_xlabel(r'$\tau$')
         ax1.set_ylabel(r'$\epsilon$')
         ax1.set_title(r'$\epsilon$ vs $\tau$ Projection')
 
         # Plot the dt-t projection
         ax2 = fig.add_subplot(2, 2, 2)
-        ax2.imshow(hist3D.sum(axis=1).T, origin='lower', extent=[t_start,t_end, dt_start, dt_end],cmap=colmap,norm=LogNorm())
+        if lognorm == True:
+            ax2.imshow(hist3D.sum(axis=1).T, origin='lower', extent=[t_start,t_end, dt_start, dt_end],cmap=colmap,norm=LogNorm())
+        elif lognorm == False:
+            ax2.imshow(hist3D.sum(axis=1).T, origin='lower', extent=[t_start,t_end, dt_start, dt_end],cmap=colmap)
         ax2.set_xlabel(r'$\tau$')
         ax2.set_ylabel(r'$\delta\tau$')
         ax2.set_title(r'$\delta\tau$ vs $\tau$ Projection')
 
         # Plot the YZ projection
         ax3 = fig.add_subplot(2, 2, 3)
-        ax3.imshow(hist3D.sum(axis=0), origin='lower', extent=[dt_start,dt_end, E_start, E_end],cmap=colmap,norm=LogNorm())
+        if lognorm == True:
+            ax3.imshow(hist3D.sum(axis=0), origin='lower', extent=[dt_start,dt_end, E_start, E_end],cmap=colmap,norm=LogNorm())
+        elif lognorm == False:
+            ax3.imshow(hist3D.sum(axis=0), origin='lower', extent=[dt_start,dt_end, E_start, E_end],cmap=colmap)
         ax3.set_xlabel(r'$\delta\tau$')
         ax3.set_ylabel(r'$\epsilon$')
         ax3.set_title(r'$\epsilon$ vs $\delta\tau$ Projection')
@@ -120,7 +132,10 @@ def hist3D(df_eventfile_input, id_name, nbins_E, nbins_t, nbins_dt, norm = 'none
         EE = np.ravel(EE)
         dtdt = np.ravel(dtdt)
         h = np.ravel(hist3D)
-        ax4.scatter(dtdt, tt, EE, s=50, alpha=0.5, edgecolors='none', c=h, cmap=colmap, norm = LogNorm())
+        if lognorm == True:
+            ax4.scatter(dtdt, tt, EE, s=np.log(h*10000), alpha=0.9, edgecolors='none', c=h, cmap=colmap, norm = LogNorm())
+        elif lognorm == False:
+            ax4.scatter(dtdt, tt, EE, s=np.log(h*10000), alpha=0.9, edgecolors='none', c=h, cmap=colmap)
         ax4.set_xlabel(r'$\delta\tau$')
         ax4.set_ylabel(r'$\tau$')
         ax4.set_zlabel(r'$\epsilon$')
