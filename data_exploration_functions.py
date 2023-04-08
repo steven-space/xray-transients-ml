@@ -22,7 +22,7 @@ import astropy.stats as astats
 # Define Custom Functions
 
 # 6. Lightcurve Plotter Function
-def lightcurveplotter(df_eventfiles_input,id_name,bin_size_sec, bb_p0 = 0.01):
+def lightcurveplotter(df_eventfiles_input,id_name,bin_size_sec, bb_p0 = 0.01,):
     """
     DESCRIPTION: Plots lightcurves and cumulative counts for given eventfile input dataframe
     INPUT: 1. Original eventfile table, 2. Original properties table, 3. Global Path, 4. Set Name
