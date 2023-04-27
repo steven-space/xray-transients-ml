@@ -22,6 +22,99 @@ import astropy.stats as astats
 # Define Custom Functions
 
 # 6. Lightcurve Plotter Function
+def lightcurveplotterNEW(df_eventfiles_input,id_name,bin_size_sec, bb_p0 = 0.01,band_errors = True):
+    """
+    DESCRIPTION: Plots lightcurves and cumulative counts for given eventfile input dataframe
+    INPUT: 1. Original eventfile table, 2. Original properties table, 3. Global Path, 4. Set Name
+    OUTPUT: 1. Reduced eventfile table, 2. Reduced properties table
+    """
+    # Define Colour Scheme
+    google_blue = '#4285F4'
+    google_red = '#DB4437'
+    google_yellow = '#F4B400'
+    google_green = '#0F9D58'
+    google_purple = '#6f2da8'
+    # Define Font Settings
+    plt.rcParams.update({'font.size': 9})
+    plt.rcParams['font.sans-serif'] = 'Helvetica'
+    plt.rcParams['font.family'] = 'sans-serif'
+    # Create subplots 
+    fig, axs = plt.subplots(4, 1, figsize=(6, 8),constrained_layout = True)
+    fig.suptitle(f'ObsRegID: {id_name}',fontweight="bold")
+    # Prepare df
+    df = df_eventfiles_input.copy()
+    df['time'] = df_eventfiles_input['time'] - min(df_eventfiles_input['time'])
+    df = df.sort_values(by='time') 
+    df = df.reset_index(drop=True)
+    # Create binned lightcurve
+    df_binned = df.groupby(df['time'] // bin_size_sec * bin_size_sec).agg(
+        broad_count = ('energy', lambda x: ((x >= 500) & (x <= 7000)).sum()),
+        soft_count =('energy', lambda x: ((x >= 500) & (x < 1200)).sum()),
+        medium_count=('energy', lambda x: ((x >= 1200) & (x < 2000)).sum()),
+        hard_count=('energy', lambda x: ((x >= 2000) & (x <= 7000)).sum()))
+    # Plot binned lightcurve
+    axs[0].plot(df_binned.index/1000, df_binned['broad_count'], color = google_blue, marker = 'o', markerfacecolor = 'black', markersize = 4)
+    axs[0].set_xlabel('Time [ks]')
+    axs[0].set_ylabel('Counts per Bin')
+    axs[0].set_title(f'Lightcurve with {bin_size_sec}s Bin Size')
+    # Create rolling 3-bin averaged lightcurved
+    df_rolling = df_binned.rolling(window=3, center=True).mean()
+    rolling_std = df_binned.rolling(window=3, center=True).std()
+    errors = rolling_std['broad_count']/math.sqrt(3)
+    errors.iloc[0] = errors.iloc[0] * math.sqrt(3)/math.sqrt(2)
+    errors.iloc[-1] = errors.iloc[-1] * math.sqrt(3)/math.sqrt(2)
+
+    errors_h = rolling_std['hard_count']/math.sqrt(3)
+    errors_h.iloc[0] = errors_h.iloc[0] * math.sqrt(3)/math.sqrt(2)
+    errors_h.iloc[-1] = errors_h.iloc[-1] * math.sqrt(3)/math.sqrt(2)
+
+    errors_m = rolling_std['medium_count']/math.sqrt(3)
+    errors_m.iloc[0] = errors_m.iloc[0] * math.sqrt(3)/math.sqrt(2)
+    errors_m.iloc[-1] = errors_m.iloc[-1] * math.sqrt(3)/math.sqrt(2)
+
+    errors_s = rolling_std['soft_count']/math.sqrt(3)
+    errors_s.iloc[0] = errors_s.iloc[0] * math.sqrt(3)/math.sqrt(2)
+    errors_s.iloc[-1] = errors_s.iloc[-1] * math.sqrt(3)/math.sqrt(2)
+    # Plot rolling 3-bin averaged lightcurved
+    axs[1].plot(df_rolling.index/1000, df_rolling['broad_count'], color = google_red)
+    axs[1].errorbar(df_rolling.index/1000, df_rolling['broad_count'], yerr = errors, xerr = None,fmt ='.',color = "black",linewidth = .5,capsize = 1)
+    axs[1].set_xlabel('Time [ks]')
+    axs[1].set_ylabel('Counts per Bin')
+    axs[1].set_title('Running Average of 3 Bins')
+    # Create cumulative count plot
+    df_cumulative = df.copy()
+    df_cumulative['count'] = 1
+    df_cumulative['cumulative_count'] = df_cumulative['count'].cumsum()
+    # Create a BB plot
+    bb_bins = astats.bayesian_blocks(df['time'].values/1000, fitness='events',p0 = bb_p0) # p0 = 0.01 or so BASED ON VINAY ! 6?
+    bin_widths = bb_bins[1:] - bb_bins[:-1]
+    counts, bins =  np.histogram(df['time']/1000, bins=bb_bins)
+    countrate = counts/bin_widths 
+    bin_centers = (bb_bins[:-1] + bb_bins[1:]) / 2
+    axs[2].step(bb_bins, np.append(countrate, countrate[-1]), where='post', color='black')
+    axs[2].set_xlim(axs[1].get_xlim())
+    axs[2].set_xlabel('Time [ks]')
+    axs[2].set_ylabel('Count Rate')
+    axs[2].set_title(f'Bayesian Blocks Count Rate (p0 = {bb_p0})')
+    # Create a Energy Band Plot
+    axs[3].plot(df_rolling.index/1000, df_rolling['hard_count'], color = google_blue, label='Hard')
+    axs[3].plot(df_rolling.index/1000, df_rolling['medium_count'], color = google_green, label='Medium')
+    axs[3].plot(df_rolling.index/1000, df_rolling['soft_count'], color = google_red, label='Soft')
+    if band_errors == True:
+        axs[3].errorbar(df_rolling.index/1000, df_rolling['hard_count'], yerr = errors_h, xerr = None,fmt ='.',color = google_blue,linewidth = 1,capsize = 2)
+        axs[3].errorbar(df_rolling.index/1000, df_rolling['medium_count'], yerr = errors_m, xerr = None,fmt ='.',color = google_green,linewidth = 1,capsize = 2)
+        axs[3].errorbar(df_rolling.index/1000, df_rolling['soft_count'], yerr = errors_s, xerr = None,fmt ='.',color = google_red,linewidth = 1,capsize = 2)
+    axs[3].set_xlim([0,max(df_binned.index/1000)])
+    # axs[3].set_ylim([0,np.max([df_binned['hard_count'],df_binned['medium_count'],df_binned['soft_count']])*1.3])
+    axs[3].set_ylabel('Counts')
+    axs[3].set_xlabel('Time [ks]')
+    axs[2].set_title(f'Energy Bands with {bin_size_sec}s Bin Size - Running Avg')
+    axs[3].legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),ncol=3, frameon = False)
+    
+    plt.show()
+    return
+
+# 6. Lightcurve Plotter Function
 def lightcurveplotter(df_eventfiles_input,id_name,bin_size_sec, bb_p0 = 0.01,):
     """
     DESCRIPTION: Plots lightcurves and cumulative counts for given eventfile input dataframe

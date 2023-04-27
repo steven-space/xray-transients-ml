@@ -44,6 +44,11 @@ def hist2D(df_eventfile_input, id_name, nbins_E, nbins_t, norm = 'minmax', plot 
         feature = (hist_Et[0]-np.min(hist_Et[0]))/(np.max(hist_Et[0])-np.min(hist_Et[0]))
     elif norm == 'none':
         feature = hist_Et[0]
+    elif norm == 'z':
+        feature = hist_Et[0]
+        mu = np.mean(hist_Et[0], axis=0)
+        sigma = np.std(hist_Et[0], axis=0)
+        feature = (hist_Et[0] - mu) / sigma # z
     if plot == True:
         if lognorm == True:
             plt.imshow(feature.T, origin='lower', extent=[0, 1, E_start, E_end], cmap=colmap,norm=LogNorm())
