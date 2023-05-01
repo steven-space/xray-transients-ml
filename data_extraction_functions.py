@@ -131,8 +131,8 @@ def data_reduction_fun(df_eventfiles,df_properties,global_path, min_counts = 5):
     df_eventfiles_input = df_eventfiles[['obsid','region_id','time','energy','chipx','chipy']]
     df_properties_input = df_properties[['name','obsid','region_id','hard_hm','hard_hs','hard_ms','var_prob_b','var_prob_h','var_prob_m','var_prob_s','var_index_b']]
     # Create unique IDs
-    df_eventfiles_input['obsreg_id'] = df_eventfiles_input['obsid'].astype(str) + '_' + df_eventfiles_input['region_id'].astype(str)
-    df_properties_input['obsreg_id'] = df_properties_input['obsid'].astype(str) + '_' + df_properties_input['region_id'].astype(str)
+    df_eventfiles_input['obsreg_id'] = df_eventfiles_input['obsid'].astype(str) + '-' + df_eventfiles_input['region_id'].astype(str)
+    df_properties_input['obsreg_id'] = df_properties_input['obsid'].astype(str) + '-' + df_properties_input['region_id'].astype(str)
     # Drop individual IDs
     df_eventfiles_input = df_eventfiles_input.drop(columns=['obsid', 'region_id'])
     df_properties_input = df_properties_input.drop(columns=['obsid', 'region_id'])

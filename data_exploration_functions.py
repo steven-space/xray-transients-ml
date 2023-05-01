@@ -22,7 +22,7 @@ import astropy.stats as astats
 # Define Custom Functions
 
 # 6. Lightcurve Plotter Function
-def lightcurveplotterNEW(df_eventfiles_input,id_name,bin_size_sec, bb_p0 = 0.01,band_errors = True):
+def lightcurveplotterNEW(df_eventfiles_input,id_name,bin_size_sec,hr_window=10,bb_p0 = 0.01,band_errors = True):
     """
     DESCRIPTION: Plots lightcurves and cumulative counts for given eventfile input dataframe
     INPUT: 1. Original eventfile table, 2. Original properties table, 3. Global Path, 4. Set Name
@@ -39,7 +39,7 @@ def lightcurveplotterNEW(df_eventfiles_input,id_name,bin_size_sec, bb_p0 = 0.01,
     plt.rcParams['font.sans-serif'] = 'Helvetica'
     plt.rcParams['font.family'] = 'sans-serif'
     # Create subplots 
-    fig, axs = plt.subplots(4, 1, figsize=(6, 8),constrained_layout = True)
+    fig, axs = plt.subplots(5, 1, figsize=(6, 10),constrained_layout = True)
     fig.suptitle(f'ObsRegID: {id_name}',fontweight="bold")
     # Prepare df
     df = df_eventfiles_input.copy()
@@ -91,25 +91,57 @@ def lightcurveplotterNEW(df_eventfiles_input,id_name,bin_size_sec, bb_p0 = 0.01,
     counts, bins =  np.histogram(df['time']/1000, bins=bb_bins)
     countrate = counts/bin_widths 
     bin_centers = (bb_bins[:-1] + bb_bins[1:]) / 2
-    axs[2].step(bb_bins, np.append(countrate, countrate[-1]), where='post', color='black')
-    axs[2].set_xlim(axs[1].get_xlim())
-    axs[2].set_xlabel('Time [ks]')
-    axs[2].set_ylabel('Count Rate')
-    axs[2].set_title(f'Bayesian Blocks Count Rate (p0 = {bb_p0})')
+    axs[3].step(bb_bins, np.append(countrate, countrate[-1]), where='post', color='black')
+    axs[3].set_xlim(axs[1].get_xlim())
+    axs[3].set_xlabel('Time [ks]')
+    axs[3].set_ylabel('Count Rate')
+    axs[3].set_title(f'Bayesian Blocks Count Rate (p0 = {bb_p0})')
     # Create a Energy Band Plot
-    axs[3].plot(df_rolling.index/1000, df_rolling['hard_count'], color = google_blue, label='Hard')
-    axs[3].plot(df_rolling.index/1000, df_rolling['medium_count'], color = google_green, label='Medium')
+    axs[2].plot(df_rolling.index/1000, df_rolling['hard_count'], color = google_blue, label='Hard')
+    axs[2].plot(df_rolling.index/1000, df_rolling['medium_count'], color = google_green, label='Medium')
     axs[3].plot(df_rolling.index/1000, df_rolling['soft_count'], color = google_red, label='Soft')
     if band_errors == True:
-        axs[3].errorbar(df_rolling.index/1000, df_rolling['hard_count'], yerr = errors_h, xerr = None,fmt ='.',color = google_blue,linewidth = 1,capsize = 2)
-        axs[3].errorbar(df_rolling.index/1000, df_rolling['medium_count'], yerr = errors_m, xerr = None,fmt ='.',color = google_green,linewidth = 1,capsize = 2)
-        axs[3].errorbar(df_rolling.index/1000, df_rolling['soft_count'], yerr = errors_s, xerr = None,fmt ='.',color = google_red,linewidth = 1,capsize = 2)
-    axs[3].set_xlim([0,max(df_binned.index/1000)])
+        axs[2].errorbar(df_rolling.index/1000, df_rolling['hard_count'], yerr = errors_h, xerr = None,fmt ='.',color = google_blue,linewidth = 1,capsize = 2)
+        axs[2].errorbar(df_rolling.index/1000, df_rolling['medium_count'], yerr = errors_m, xerr = None,fmt ='.',color = google_green,linewidth = 1,capsize = 2)
+        axs[2].errorbar(df_rolling.index/1000, df_rolling['soft_count'], yerr = errors_s, xerr = None,fmt ='.',color = google_red,linewidth = 1,capsize = 2)
+    axs[2].set_xlim([0,max(df_binned.index/1000)])
     # axs[3].set_ylim([0,np.max([df_binned['hard_count'],df_binned['medium_count'],df_binned['soft_count']])*1.3])
-    axs[3].set_ylabel('Counts')
-    axs[3].set_xlabel('Time [ks]')
+    axs[2].set_ylabel('Counts')
+    axs[2].set_xlabel('Time [ks]')
     axs[2].set_title(f'Energy Bands with {bin_size_sec}s Bin Size - Running Avg')
-    axs[3].legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),ncol=3, frameon = False)
+    axs[2].legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),ncol=3, frameon = False)
+
+    # Create HR 
+    # assign hardness category to each energy value
+    def assign_category(energy):
+        if 500 <= energy <= 1200:
+            return 'S'
+        elif 1200 < energy <= 2000:
+            return 'M'
+        elif 2000 < energy <= 7000:
+            return 'H'
+        else:
+            return None
+    df['band'] = df['energy'].apply(assign_category)
+    # compute rolling counts and HR using groupby and rolling
+    window_size = hr_window
+    grouped = df.groupby('band')['energy']
+    counts = grouped.rolling(window_size).count()
+    h_counts = counts['H']
+    m_counts = counts['M']
+    s_counts = counts['S']
+    hr_hs = (h_counts - s_counts)/(h_counts + s_counts)
+    hr_hm = (h_counts - m_counts)/(h_counts + m_counts)
+    hr_ms = (m_counts - s_counts)/(m_counts + s_counts)
+    axs[4].plot(df["time"]/1000, hr_hm , color = google_blue, label='H-M')
+    axs[4].plot(df["time"]/1000, hr_hs, color = google_green, label='H-S')
+    axs[4].plot(df["time"]/1000, hr_ms, color = google_red, label='M-S')
+    axs[4].set_xlim([0,max(df["time"]/1000)])
+    # axs[3].set_ylim([0,np.max([df_binned['hard_count'],df_binned['medium_count'],df_binned['soft_count']])*1.3])
+    axs[4].set_ylabel('HR')
+    axs[4].set_xlabel('Time [ks]')
+    axs[4].set_title(f'HR Running Avg of 10 counts')
+    axs[4].legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),ncol=3, frameon = False)
     
     plt.show()
     return
