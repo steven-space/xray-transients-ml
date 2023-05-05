@@ -29,8 +29,8 @@ def hist2D(df_eventfile_input, id_name, nbins_E, nbins_t, norm = 'minmax', plot 
     t_start = 0
     t_end = 1
     # IDs
-    obsid = id_name.split("-")[0]
-    regid = id_name.split("-")[1]
+    obsid = id_name.split("_")[0]
+    regid = id_name.split("_")[1]
     # Eventfile length and duration
     N_length = len(df) 
     T_duration = max(df["time"])-min(df["time"])
